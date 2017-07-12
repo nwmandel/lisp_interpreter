@@ -1,6 +1,7 @@
 import math
 import operator as op 
 
+#TODO procedure and env classes then redefine evaluation
 
 Env = dict
 Symbol = str
