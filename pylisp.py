@@ -1,18 +1,33 @@
 import math
 import operator as op 
 
-#TODO procedure and env classes then redefine evaluation
+class procedure(object):
+	def __init__(self, params, body, env):
+		self.params, self.body, self.env = params, body, env
+	def __call__(self, *args):
+		return eval(self.body, Env(self.params, args, self.env))
 
-Env = dict
+class Env(dict):
+	"an environment is a dict of var,val pairs with and outer environment"
+	def __init__(self, params=(), args=(), outer=None):
+		self.update(zip(params, args))
+		self.outer = outer
+	def find(self, var):
+		"find inner most environment where var is"
+		return self if (var in self) else self.outer.find(var)
+
+
+#Env = dict
 Symbol = str
 List = list
 Number = (int, float)
+args = None
 
 def stand_env():
 	env = Env()
 	env.update(vars(math))
 	env.update({
-		'+':op.add, '-':op.sub, '*':op.mul, 
+		'+':op.add, '-':op.sub, '*':op.mul, '/':op.floordiv
 		'>':op.gt, '<':op.lt, '>=':op.ge, '<=':op.le, '=':op.eq,
 		'abs':abs, 'append':op.add, 
 		'begin':  lambda *x:x[-1],
@@ -41,6 +56,34 @@ global_env = stand_env()
 def eval(x, env=global_env):
 	"evaluate an expression in an environment"
 	if isinstance(x, Symbol):
+		return env.find(x)[x]
+	elif not isinstance(x, List):
+		return x
+	elif x[0] == 'quote':
+		(_,exp) = x
+		return exp
+	elif x[0] == 'if':
+		(_,test,conseq,alt) = x
+		exp = (conseq if eval(test,env) else alt)
+		return eval(exp, env)
+	elif x[0] == 'define':
+		(_,var,exp) = x
+		env[var] = eval(exp, env)
+	elif x[0] == 'set!':
+		(_,var,exp) = x
+		env.find(var)[var] = eval(exp,env)
+	elif x[0] == 'lambda':
+		(_,params,body) = x
+		return procedure(params, body, env)
+	else:
+		proc = eval(x[0], env)
+		args = [eval(arg, env) for arg in x[1:]]
+		return proc(*args)
+
+'''old eval with python dict
+def eval(x, env=global_env):
+	"evaluate an expression in an environment"
+	if isinstance(x, Symbol):
 		return env[x]
 	elif not isinstance(x, List):
 		return x
@@ -55,7 +98,7 @@ def eval(x, env=global_env):
 		proc = eval(x[0], env)
 		args = [eval(arg, env) for arg in x[1:]]
 		return proc(*args)
-
+'''
 
 def tokenize(c):
 	"convert a string of characters into a list of tokens"
@@ -101,3 +144,5 @@ def schemestr(exp):
 		return '(' + ' '.join(map(schemestr,exp)) + ')'
 	else:
 		return str(exp)
+
+
