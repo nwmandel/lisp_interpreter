@@ -88,53 +88,61 @@ global_env = stand_env()
 
 def eval(x, env=global_env):
 	"evaluate an expression in an environment"
-	if isinstance(x, Symbol):
+	if isinstance(x, Symbol):	#variable
 		return env.find(x)[x]
-	elif not isinstance(x, List):
+	elif not isinstance(x, List):	#const literal
 		return x
-	elif x[0] == 'quote':
+	elif x[0] == 'quote':			#quote exp
 		(_,exp) = x
 		return exp
-	elif x[0] == 'if':
+	elif x[0] == 'if':				#if test conseq alt
 		(_,test,conseq,alt) = x
 		exp = (conseq if eval(test,env) else alt)
 		return eval(exp, env)
-	elif x[0] == 'define':
+	elif x[0] == 'define':			#define var exp
 		(_,var,exp) = x
 		env[var] = eval(exp, env)
-	elif x[0] == 'set!':
+	elif x[0] == 'set!':			#set! var exp
 		(_,var,exp) = x
 		env.find(var)[var] = eval(exp,env)
-	elif x[0] == 'lambda':
+	elif x[0] == 'lambda':			#lambda (var*) exp
 		(_,params,body) = x
 		return procedure(params, body, env)
-	else:
+	elif x[0] is _begin:			# begin exp+
+		for exp in x[1:-1]:
+			eval(exp, env)
+		x = x[-1]
+	else:							#proc exp*
 		proc = eval(x[0], env)
 		args = [eval(arg, env) for arg in x[1:]]
 		return proc(*args)
 
-def readchar(inp):
-	"read next char from input buffer"
-	if inp.line != '':
-		ch, inp.line = inp.line[0], inp.line[1:]
+def parse(inport):
+	if isinstance(inport, str): inport = Input(StringIO.StringIO(inpot))
+	return expand(read(inport), toplevel=True)
+
+def readchar(inport):
+	"read next char from inportut buffer"
+	if inport.line != '':
+		ch, inport.line = inport.line[0], inport.line[1:]
 		return ch
 	else:
-		return inp.file.read(1) or eof_object
+		return inport.file.read(1) or eof_object
 
-def read(inp):
-	"read expression from input buffer"
+def read(inport):
+	"read expression from inport buffer"
 	def readahead(tok):
 		if '(' == tok:
 			L = []
 			while True:
-				tok = inp.next_token()
+				tok = inport.next_token()
 				if tok == ')': return L
 				else: L.append(readahead(tok))
 		elif ')' == tok: raise SyntaxError('unexpected )')
-		elif tok in quotes: return [quotes[tok], read(inp)]
+		elif tok in quotes: return [quotes[tok], read(inport)]
 		elif tok is eof_object: raise SyntaxError('unexpected EOF in list')
 		else: return atom(tok)
-	next_tok = inp.next_token()
+	next_tok = inport.next_token()
 	return eof_object if next_tok is eof_object else readahead(next_tok)
 
 
