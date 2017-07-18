@@ -1,5 +1,6 @@
 import math
 import operator as op 
+import re
 
 class procedure(object):
 	def __init__(self, params, body, env):
@@ -16,9 +17,38 @@ class Env(dict):
 		"find inner most environment where var is"
 		return self if (var in self) else self.outer.find(var)
 
+class Symbol(str): pass
+
+def Sym(s, symbol_table={}):
+	"find or create symbol entry for str s in sym table"
+	if s not in symbol_table: symbol_table[s] = Symbol(s)
+	return symbol_table[s]
+
+_quote, _if, _set, _lambda, _begin, _define, _definemacro = map(Sym, 
+"quote if set! lambda begin define define-macro".split())
+
+_quasiquote, _unquotesplicing, _unquote = map(Sym, 
+"quasiquote, unquote-splicing, unquote".split())
+
+class Input(object):
+	"holds line of chars"
+	_token = r'''\s*(,@|[('`,)]|"(?:[\\].|[^\\"])*"|;.*|[^\s('"`,;)]*)(.*)'''
+	def __init__(self, file):
+		self.file = file;
+		self.line = ''
+	def next_token(self):
+		"return next token while reading text into line buffer"
+		while True:
+			if self.line == '': self.line = self.file.readline()
+			if self.line == '': return eof_object
+			token, self.line = re.match(Input._token, self.line).groups()
+			if token != '' and not token.startswith(';'):
+				return token
+
+
 
 #Env = dict
-Symbol = str
+#Symbol = str
 List = list
 Number = (int, float)
 args = None
