@@ -1,6 +1,7 @@
 import math
 import operator as op 
 import re
+import sys
 
 class procedure(object):
 	def __init__(self, params, body, env):
@@ -18,6 +19,9 @@ class Env(dict):
 		return self if (var in self) else self.outer.find(var)
 
 class Symbol(str): pass
+
+eof_object = Symbol('#<eof-object>')
+
 
 def Sym(s, symbol_table={}):
 	"find or create symbol entry for str s in sym table"
@@ -46,7 +50,6 @@ class Input(object):
 				return token
 
 
-
 #Env = dict
 #Symbol = str
 List = list
@@ -57,7 +60,7 @@ def stand_env():
 	env = Env()
 	env.update(vars(math))
 	env.update({
-		'+':op.add, '-':op.sub, '*':op.mul, '/':op.floordiv
+		'+':op.add, '-':op.sub, '*':op.mul, '/':op.floordiv,
 		'>':op.gt, '<':op.lt, '>=':op.ge, '<=':op.le, '=':op.eq,
 		'abs':abs, 'append':op.add, 
 		'begin':  lambda *x:x[-1],
@@ -110,69 +113,66 @@ def eval(x, env=global_env):
 		args = [eval(arg, env) for arg in x[1:]]
 		return proc(*args)
 
-'''old eval with python dict
-def eval(x, env=global_env):
-	"evaluate an expression in an environment"
-	if isinstance(x, Symbol):
-		return env[x]
-	elif not isinstance(x, List):
-		return x
-	elif x[0] == 'if':
-		(_,test, conseq, alt) = x
-		exp = (conseq if eval(test, env) else alt)
-		return eval(exp, env)
-	elif x[0] == 'define':
-		(_,var, exp) = x
-		env[var] = eval(exp, env)
+def readchar(inp):
+	"read next char from input buffer"
+	if inp.line != '':
+		ch, inp.line = inp.line[0], inp.line[1:]
+		return ch
 	else:
-		proc = eval(x[0], env)
-		args = [eval(arg, env) for arg in x[1:]]
-		return proc(*args)
-'''
+		return inp.file.read(1) or eof_object
 
-def tokenize(c):
-	"convert a string of characters into a list of tokens"
-	return c.replace('(', ' ( ').replace(')', ' ) ').split()
+def read(inp):
+	"read expression from input buffer"
+	def readahead(tok):
+		if '(' == tok:
+			L = []
+			while True:
+				tok = inp.next_token()
+				if tok == ')': return L
+				else: L.append(readahead(tok))
+		elif ')' == tok: raise SyntaxError('unexpected )')
+		elif tok in quotes: return [quotes[tok], read(inp)]
+		elif tok is eof_object: raise SyntaxError('unexpected EOF in list')
+		else: return atom(tok)
+	next_tok = inp.next_token()
+	return eof_object if next_tok is eof_object else readahead(next_tok)
 
-def parse(program):
-	"read expression from a string"
-	return read_from_toks(tokenize(program))
-
-def read_from_toks(tokens):
-	"read an expression from a sequence of tokens"
-	if len(tokens) == 0:
-		raise SyntaxError('unexpected EOF while reading')
-	token = tokens.pop(0)
-	if '(' == token:
-		L = []
-		while tokens[0] != ')':
-			L.append(read_from_toks(tokens))
-		tokens.pop(0)
-		return L
-	elif ')' == token:
-		raise SyntaxError('unexpected \')\'')
-	else:
-		return atom(token)
 
 def atom(token):
 	"numbers become numbers, every other token is a symbol"
+	if token == '#t': return True
+	elif token == '#f': return False
+	elif token[0] == '"': return token[1:-1].decode('string_escape')
 	try: return int(token)
 	except ValueError:
 		try: return float(token)
 		except ValueError:
-			return Symbol(token)
+			try: return complex(token.replace('i','j',1))
+			except ValueError:
+				return Symbol(token)
 
-def repl(prompt='pylisp> '):
+def to_string(x):
+	"convert python object to lisp readable string"
+	if x is True: return "#t"
+	elif x is False: return "#f"
+	elif isa(x, Symbol): return x
+	elif isa(x, str): return '"%s"' % x.encode('string_escape').replace('"',r'\"')
+	elif isa(x, list): return '(' + ' '.join(map(to_string, x)) + ')'
+	elif isa(x, complex): return str(x).replace('j', 'i')
+	else: return str(x)
+
+def load(filename):
+	repl(None, Input(open(filename)), None)
+
+def repl(prompt='pylisp> ', inport=Input(sys.stdin), out=sys.stdout):
 	while True:
-		val = eval(parse(input(prompt)))
-		if val is not None:
-			print(schemestr(val))
-
-def schemestr(exp):
-	"convert a python object into scheme string"
-	if isinstance(exp, List):
-		return '(' + ' '.join(map(schemestr,exp)) + ')'
-	else:
-		return str(exp)
+		try:
+			if prompt: sys.stderr.write(prompt)
+			x = parse(inport)
+			if x is eof_object: return
+			val = eval(x)
+			if val is not None and out: print >> out, to_string(val)
+		except Exception as e:
+			print('%s: %s' % (type(e).__name__, e))
 
 
