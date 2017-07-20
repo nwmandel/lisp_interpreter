@@ -12,11 +12,20 @@ class procedure(object):
 class Env(dict):
 	"an environment is a dict of var,val pairs with and outer environment"
 	def __init__(self, params=(), args=(), outer=None):
-		self.update(zip(params, args))
 		self.outer = outer
+		if isa(params, Symbol):
+			self.update({params:list(args)})
+		else: 
+			if len(args) != len(params):
+				raise TypeError('expected %s, given %s, '
+								% (to_string(params), to_string(args)))
+			self.update(zip(params,args))
 	def find(self, var):
 		"find inner most environment where var is"
-		return self if (var in self) else self.outer.find(var)
+		if var in self: return self
+		elif self.outer is None: raise LookupError(var)
+		else: return self.outer.find(var)
+		#return self if (var in self) else self.outer.find(var)
 
 class Symbol(str): pass
 
