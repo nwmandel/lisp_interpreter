@@ -26,7 +26,7 @@ def stand_env():
 	env = Env()
 	env.update(vars(math))
 	env.update({
-		'+':op.add, '-':op.sub, '*':op.mul, '/':op.floordiv
+		'+':op.add, '-':op.sub, '*':op.mul, '/':op.floordiv,
 		'>':op.gt, '<':op.lt, '>=':op.ge, '<=':op.le, '=':op.eq,
 		'abs':abs, 'append':op.add, 
 		'begin':  lambda *x:x[-1],
