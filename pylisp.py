@@ -1,7 +1,11 @@
 import math
+import cmath
 import operator as op 
 import re
 import sys
+import io
+
+isa = isinstance
 
 class procedure(object):
 	def __init__(self, params, body, env):
@@ -31,7 +35,6 @@ class Symbol(str): pass
 
 eof_object = Symbol('#<eof-object>')
 
-
 def Sym(s, symbol_table={}):
 	"find or create symbol entry for str s in sym table"
 	if s not in symbol_table: symbol_table[s] = Symbol(s)
@@ -58,13 +61,14 @@ class Input(object):
 			if token != '' and not token.startswith(';'):
 				return token
 
+def is_pair(x): return x != [] and isa(x, list)
 
 #Env = dict
 #Symbol = str
 List = list
 Number = (int, float)
 args = None
-
+''' simple env block
 def stand_env():
 	env = Env()
 	env.update(vars(math))
@@ -92,12 +96,12 @@ def stand_env():
 		'symbol?':  lambda x: isinstance(x,Symbol),
 		})
 	return env
-
-global_env = stand_env()
-
+'''
 def require(x, predicate, message="incorrect length"):
 	"error handling"
 	if not predicate: raise SyntaxError(to_string(x)+': '+message)
+
+_let = "let"
 
 def let(*args):
 	args = list(args)
@@ -109,49 +113,17 @@ def let(*args):
 	vars, vals = zip(*bindings)
 	return [[_lambda, list(vars)] + map(expand, body)] + map(expand, vals)
 
-_append, _cons, _let = map(Sym("append cons let".split))
+#_append, _cons, _let = map(Sym("append cons let".split))
 macro_table = {_let:let} 
 
-
-def eval(x, env=global_env):
-	"evaluate an expression in an environment"
-	if isinstance(x, Symbol):	#variable
-		return env.find(x)[x]
-	elif not isinstance(x, List):	# const literal
-		return x
-	elif x[0] == 'quote':			# (quote exp)
-		(_,exp) = x
-		return exp
-	elif x[0] == 'if':				# (if test conseq alt)
-		(_,test,conseq,alt) = x
-		exp = (conseq if eval(test,env) else alt)
-		return eval(exp, env)
-	elif x[0] == 'define':			# (define var exp)
-		(_,var,exp) = x
-		env[var] = eval(exp, env)
-	elif x[0] == 'set!':			# (set! var exp)
-		(_,var,exp) = x
-		env.find(var)[var] = eval(exp,env)
-	elif x[0] == 'lambda':			# (lambda (var*) exp)
-		(_,params,body) = x
-		return procedure(params, body, env)
-	elif x[0] is _begin:			# (begin exp+)
-		for exp in x[1:-1]:
-			eval(exp, env)
-		x = x[-1]
-	else:							# (proc exp*)
-		proc = eval(x[0], env)
-		args = [eval(arg, env) for arg in x[1:]]
-		return proc(*args)
-
 def parse(inport):
-	if isinstance(inport, str): inport = Input(StringIO.StringIO(inpot))
+	if isinstance(inport, str): inport = Input(io.StringIO(inport))
 	return expand(read(inport), toplevel=True)
 
 def expand(x, toplevel=False):
 	"iterate over tree and type check"
 	require(x,x!=[])						# () is an error
-	if not isa(x,list):						# constand is unchanged
+	if not isa(x,list):						# constant is unchanged
 		return x	
 	elif x[0] is _quote:					# (quote exp)
 		require(x,len(x)==2)
@@ -211,6 +183,7 @@ def expand_quasiquote(x):
 		require(x[0], len(x[0])==2)
 		return [_append, x[0][1], expand_quasiquote(x[1:])]
 
+quotes = {"'":_quote, "`":_quasiquote, ",":_unquote, ",@":_unquotesplicing}
 
 def readchar(inport):
 	"read next char from inportut buffer"
@@ -235,7 +208,6 @@ def read(inport):
 		else: return atom(tok)
 	next_tok = inport.next_token()
 	return eof_object if next_tok is eof_object else readahead(next_tok)
-
 
 def atom(token):
 	"numbers become numbers, every other token is a symbol"
@@ -263,15 +235,80 @@ def to_string(x):
 def load(filename):
 	repl(None, Input(open(filename)), None)
 
-def repl(prompt='pylisp> ', inport=Input(sys.stdin), out=sys.stdout):
+def repl(prompt='pylisp> ', inport=Input(sys.stdin)):
 	while True:
+		print('pylisp> ')
 		try:
-			if prompt: sys.stderr.write(prompt)
+			sys.stderr.write(prompt)
 			x = parse(inport)
 			if x is eof_object: return
 			val = eval(x)
-			if val is not None and out: print >> out, to_string(val)
+			if val is not None: print(to_string(val),file=sys.stdout) #print >> sys.stdout, to_string(val)
 		except Exception as e:
 			print('%s: %s' % (type(e).__name__, e))
 
+def add_globals(self):
+	self.update(vars(math))
+	self.update(vars(cmath))
+	self.update({
+		'+':op.add, '-':op.sub, '*':op.mul, '/':op.floordiv,
+		'>':op.gt, '<':op.lt, '>=':op.ge, '<=':op.le, '=':op.eq,
+		'boolean?':lambda x: isa(x, bool), 'pair?':is_pair,
+		'abs':abs, 'append':op.add, 'port?': lambda x:isa(x,file),
+		'apply': lambda proc,l: proc(*l), 'eval': lambda x: eval(expand(x)),
+		'open-input-file':open, 'close-input-port':lambda p: p.file.close(),
+		'open-output-file':lambda f:open(f,'w'), 'read-char': readchar,
+		'close-output-port':lambda p:p.close(), 'read':read,
+		'eof-object?':lambda x:x is eof_object,
+		'write':lambda x,port=sys.stdout:port.write(to_string(x)),
+		'display': lambda x,port=sys.stdout:port.write(x if isa(x,str) else to_string(x)),
+		'begin':  lambda *x:x[-1], 'car':    lambda x: x[0],
+		'cdr':    lambda x:x[1:], 'cons':   lambda x,y: [x] + y,
+		'eq?':    op.is_, 'equal?': op.eq, 'length': len,
+		'list':   lambda *x: list(x), 'list?':  lambda x:isinstance(x,list),
+		'map':    map, 'max':    max, 'min':    min,
+		'not':    op.not_, 'null?':  lambda x: x == [],
+		'number?': lambda x: isinstance(x,Number), 'procedure?': callable,
+		'round':   round, 'symbol?':  lambda x: isinstance(x,Symbol),
+		})
+	return self
 
+global_env = add_globals(Env())
+
+def eval(x, env=global_env):
+	"evaluate an expression in an environment"
+	if isinstance(x, Symbol):	#variable
+		return env.find(x)[x]
+	elif not isinstance(x, List):	# const literal
+		return x
+	elif x[0] == 'quote':			# (quote exp)
+		(_,exp) = x
+		return exp
+	elif x[0] == 'if':				# (if test conseq alt)
+		(_,test,conseq,alt) = x
+		exp = (conseq if eval(test,env) else alt)
+		return eval(exp, env)
+	elif x[0] == 'define':			# (define var exp)
+		(_,var,exp) = x
+		env[var] = eval(exp, env)
+	elif x[0] == 'set!':			# (set! var exp)
+		(_,var,exp) = x
+		env.find(var)[var] = eval(exp,env)
+	elif x[0] == 'lambda':			# (lambda (var*) exp)
+		(_,params,body) = x
+		return procedure(params, body, env)
+	elif x[0] is _begin:			# (begin exp+)
+		for exp in x[1:-1]:
+			eval(exp, env)
+		x = x[-1]
+	else:							# (proc exp*)
+		proc = eval(x[0], env)
+		args = [eval(arg, env) for arg in x[1:]]
+		return proc(*args)
+
+
+def main():
+	repl()
+
+if __name__ == "__main__":
+	main()
