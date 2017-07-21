@@ -3,6 +3,8 @@
 Python implemented lisp interpreter.
 
 # How to Run
-$>python3 pylisp.py
->\>\>pylisp > 
+$>python3 
+>\>\>import pylisp
+>\>\>pylisp.repl()
+
 
