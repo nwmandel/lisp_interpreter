@@ -243,7 +243,7 @@ def repl(prompt='pylisp> ', inport=Input(sys.stdin)):
 			x = parse(inport)
 			if x is eof_object: return
 			val = eval(x)
-			if val is not None: print(to_string(val),file=sys.stdout) #print >> sys.stdout, to_string(val)
+			if val is not None: print(to_string(val), file=sys.stdout)
 		except Exception as e:
 			print('%s: %s' % (type(e).__name__, e))
 
