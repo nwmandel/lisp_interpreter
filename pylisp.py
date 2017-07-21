@@ -95,33 +95,47 @@ def stand_env():
 
 global_env = stand_env()
 
+def let(*args):
+	args = list(args)
+	x = cons(_let, args)
+	require(x, len(args)>1)
+	bindings, body = args[0], args[1:]
+	require(x, all(isa(b,list) and len(b)==2 and isa(b[0], Symbol)
+		for b in bindings), "illegal bindings")
+	vars, vals = zip(*bindings)
+	return [[_lambda, list(vars)] + map(expand, body)] + map(expand, vals)
+
+_append, _cons, _let = map(Sym("append cons let".split))
+macro_table = {_let:let} 
+
+
 def eval(x, env=global_env):
 	"evaluate an expression in an environment"
 	if isinstance(x, Symbol):	#variable
 		return env.find(x)[x]
-	elif not isinstance(x, List):	#const literal
+	elif not isinstance(x, List):	# const literal
 		return x
-	elif x[0] == 'quote':			#quote exp
+	elif x[0] == 'quote':			# (quote exp)
 		(_,exp) = x
 		return exp
-	elif x[0] == 'if':				#if test conseq alt
+	elif x[0] == 'if':				# (if test conseq alt)
 		(_,test,conseq,alt) = x
 		exp = (conseq if eval(test,env) else alt)
 		return eval(exp, env)
-	elif x[0] == 'define':			#define var exp
+	elif x[0] == 'define':			# (define var exp)
 		(_,var,exp) = x
 		env[var] = eval(exp, env)
-	elif x[0] == 'set!':			#set! var exp
+	elif x[0] == 'set!':			# (set! var exp)
 		(_,var,exp) = x
 		env.find(var)[var] = eval(exp,env)
-	elif x[0] == 'lambda':			#lambda (var*) exp
+	elif x[0] == 'lambda':			# (lambda (var*) exp)
 		(_,params,body) = x
 		return procedure(params, body, env)
-	elif x[0] is _begin:			# begin exp+
+	elif x[0] is _begin:			# (begin exp+)
 		for exp in x[1:-1]:
 			eval(exp, env)
 		x = x[-1]
-	else:							#proc exp*
+	else:							# (proc exp*)
 		proc = eval(x[0], env)
 		args = [eval(arg, env) for arg in x[1:]]
 		return proc(*args)
@@ -129,6 +143,41 @@ def eval(x, env=global_env):
 def parse(inport):
 	if isinstance(inport, str): inport = Input(StringIO.StringIO(inpot))
 	return expand(read(inport), toplevel=True)
+
+def expand(x, toplevel=False):
+	"iterate over tree and type check"
+	require(x,x!=[])						# () is an error
+	if not isa(x,list):						# constand is unchanged
+		return x	
+	elif x[0] is _quote:					# (quote exp)
+		require(x,len(x)==2)
+		return x
+	elif x[0] is _if:
+		if len(x)==3: x = x + [None]		# (if t c)# (if t c None)
+		require(x, len(x)==4)
+		return map(expand,x)
+	elif x[0] is _set:
+		require(x, len(x)==3)
+		var = x[1]							# (set! non-var exp) is an error
+		require(x, isa(var, Symbol), "can only set! a symbol")
+		return [_set, var, expand(x[2])]
+	elif x[0] is _define or x[0] is _definemacro:
+		require(x, len(x)>=3)
+		_def, v, body, = x[0], x[1], x[2:]
+		if isa(v, list) and v:				# (define (f args) body)
+			f, args = v[0], v[1:]			# is (define f (lambda (args) body))
+			return expand([_def, f, [_lambda, args]+body])
+		else: 
+			require(x,len(x)==3)			# (define non-var/list exp) is an error
+			require(x, isa(v, Symbol), "can only define a symbol")
+			exp = expand(x[2])
+			if _def is _definemacro:
+				require(x, toplevel, "define-macro can only be at top level")
+				proc = eval(exp)
+				require(x, callable(proc), "macro must be procedure")
+				macro_table[v] = proc 		# (define-macro v proc)
+				return None					# is None and put v:proc in macro_table
+			return [_define,v,exp]
 
 def readchar(inport):
 	"read next char from inportut buffer"
