@@ -4,7 +4,7 @@ Python implemented lisp interpreter.
 
 # How to Run
 $>python3 
->\>\>import pylisp 
+>\>\>import pylisp  
 >\>\>pylisp.repl()
 
 
